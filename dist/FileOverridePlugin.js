@@ -34,16 +34,27 @@ export class FileOverridePlugin {
                 return callback();
             // Mark the request to prevent infinite recursion
             request._fileOverrideResolveProcessed = true;
-            // Get the filepath of the current request/import
             const importPath = request.request;
-            const isRelativeImport = importPath.startsWith(".");
-            // Get the issuer (the file that is doing the importing)
-            const issuerDir = path.dirname(request.context.issuer || "");
+            const issuerPath = request.context.issuer || "";
+            const issuerDir = path.dirname(issuerPath);
+            const issuerFileName = path.basename(issuerPath);
+            /*
+              If this import is from a file named `_internal.*`, skip the file override, even if there's a valid override file.
+              This provides a mechanism to prevent circular dependency infinite loops when a file override exports a different component that
+              itself imports the original component (creating a loop). The different component should import the original component from an
+              _internal file, which simply re-exports the original component (i.e. _internal.* is a middleman that breaks the loop).
+            */
+            if (issuerFileName.includes("_internal.")) {
+                if (this.log) {
+                    console.log(`[FileOverridePlugin] Import from _internal file, skipping override:`, `\n  Issuer: ${issuerPath}`, `\n  Import: ${importPath}`);
+                }
+                return callback();
+            }
             // Ensure the import/request originated from within the source folder (TODO: consider whether this should be an optional enforcement)
             if (!issuerDir.includes(this.sourcePath))
                 return callback();
             // Resolve the absolute path of the requested file
-            const absoluteSourcePath = isRelativeImport
+            const absoluteSourcePath = importPath.startsWith(".")
                 ? path.resolve(issuerDir, importPath)
                 : importPath;
             // Ensure the requested file is from the source folder
